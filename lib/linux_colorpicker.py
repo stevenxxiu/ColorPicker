@@ -1,78 +1,47 @@
 #!/usr/bin/env python
-
 import sys
 
-wx = None
-Gtk = None
+import gi
+gi.require_version('Gdk', '4.0')
+gi.require_version('Gtk', '4.0')
+from gi.repository import Gdk, Gtk
 
-try:
-    import gi
-    gi.require_version('Gtk', '3.0')
-    from gi.repository import Gtk
-    from gi.repository import Gdk
-except ImportError:
-    try:
-        import gtk as Gtk
-        try:
-            Gdk = Gtk.gdk
-        except AttributeError:
-            from gi.repository import Gdk
-    except ImportError:
-        try:
-            import wx
-        except ImportError:
-            raise Exception("Neither GTK nor WxWidgets are installed.")
 
-def open_color_picker_via_gtk():
-    color_sel = Gtk.ColorSelectionDialog("Sublime Color Picker")
+class ColorPicker:
+    def __init__(self, init_color=None):
+        self.app = None
+        self.init_color = init_color
 
+    def on_response(self, dialog, response):
+        if response == Gtk.ResponseType.OK:
+            # Convert to 8-bit channels
+            rgba = dialog.get_rgba()
+            print(f'{round(rgba.red * 255):02X}{round(rgba.green * 255):02X}{round(rgba.blue * 255):02X}')
+        self.app.quit()
+
+    def on_activate(self, app):
+        window = Gtk.ApplicationWindow(application=app)
+        dialog = Gtk.ColorChooserDialog.new('Sublime Color Picker')
+        if self.init_color is not None:
+            dialog.set_rgba(self.init_color)
+        # Show the editor, otherwise we can only choose amongst a few fixed colors
+        dialog.set_property('show-editor', True)
+        dialog.connect('response', self.on_response)
+        dialog.set_transient_for(window)
+        dialog.present()
+
+    def run(self):
+        self.app = Gtk.Application()
+        self.app.connect('activate', self.on_activate)
+        self.app.run(None)
+
+
+def main():
+    init_color = None
     if len(sys.argv) > 1:
-        current_color = Gdk.color_parse(sys.argv[1])
-        if current_color:
-            try:
-                color_sel.colorsel.set_current_color(current_color)
-            except AttributeError:  # newer version of GTK
-                color_sel.get_color_selection().set_current_color(current_color)
-
-    if color_sel.run() == getattr(Gtk, 'RESPONSE_OK', Gtk.ResponseType.OK):
-        color = color_sel.get_color_selection().get_current_color()
-        #Convert to 8bit channels
-        red = int(color.red / 256)
-        green = int(color.green / 256)
-        blue = int(color.blue / 256)
-        #Format
-        finalcolor = "%02x%02x%02x" % (red, green, blue)
-        print(finalcolor.upper())
-
-    color_sel.destroy()
-
-#Based on https://gist.github.com/anonymous/ef7871571cd3fdf1a51d603a39aaead1
-def open_color_picker_via_wxwidgets():
-    def color_parse(hex_string):
-        hex_vals = hex_string.lstrip('#')
-        #https://stackoverflow.com/a/29643643
-        return tuple(int(hex_vals[i:i + 2], 16) for i in (0, 2, 4))
-
-    class MyPanel(wx.Panel):
-        def __init__(self, parent):
-            wx.Panel.__init__(self, parent, wx.ID_ANY)
-            data = wx.ColourData()
-            data.SetColour(color_parse(sys.argv[1]))
-            dlg = wx.ColourDialog(self, data)
-            dlg.GetColourData().SetChooseFull(True)
-            if dlg.ShowModal() == wx.ID_OK:
-                data = dlg.GetColourData()
-                rgb = data.GetColour().Get()
-                finalcolor = "%02x%02x%02x" % rgb
-                print(finalcolor.upper())
-            frame.Close()
-
-    app = wx.App(0)
-    frame = wx.Frame(None, wx.ID_ANY, '', size=(450, 200))
-    MyPanel(frame)
+        init_color = Gdk.RGBA()
+        init_color.parse(sys.argv[1])
+    ColorPicker(init_color).run()
 
 
-if Gtk:
-    open_color_picker_via_gtk()
-elif wx:
-    open_color_picker_via_wxwidgets()
+main()
