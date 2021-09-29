@@ -218,4 +218,5 @@ class ColorPickCommand(sublime_plugin.TextCommand):
                     color = color.lower()
                 self.view.run_command('color_pick_replace_regions_helper', {'color': f'#{color}'})
 
+        # Run the color picker in a thread, so we don't block
         threading.Thread(target=worker).start()
