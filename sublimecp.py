@@ -164,16 +164,13 @@ def is_valid_hex_color(s):
         return matches.group(1)
 
 
-def pick_color(starting_color=None):
-    start_color = None
-
-    if starting_color is not None:
-        svg_color_hex = SVG_COLORS.get(starting_color, None)
-        if svg_color_hex is not None:
-            starting_color = svg_color_hex
-
-        if is_valid_hex_color(starting_color):
-            start_color = '#' + starting_color
+def pick_color(start_color=None):
+    if start_color in SVG_COLORS:
+        start_color = f'#{SVG_COLORS[start_color]}'
+    elif is_valid_hex_color(start_color):
+        start_color = f'#{start_color}'
+    else:
+        start_color = None
 
     args = [os.path.join(sublime.packages_path(), binpath)]
     if start_color:
