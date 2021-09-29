@@ -158,19 +158,13 @@ SVG_COLORS = {
 }
 
 
-def is_valid_hex_color(s):
-    matches = re.fullmatch(r'(0x)?([\da-f]{3}|[\da-f]{6})', s, re.IGNORECASE)
-    if matches:
-        return matches.group(1)
-
-
 def pick_color(start_color=None):
     if start_color in SVG_COLORS:
         start_color = f'#{SVG_COLORS[start_color]}'
-    elif is_valid_hex_color(start_color):
-        start_color = f'#{start_color}'
     else:
-        start_color = None
+        matches = re.fullmatch(r'(?:0x|#)?([\da-f]{3}|[\da-f]{6})', start_color, re.IGNORECASE)
+        if matches:
+            start_color = f'#{matches.group(1)}'
 
     args = [os.path.join(sublime.packages_path(), binpath)]
     if start_color:
@@ -198,38 +192,28 @@ class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
 
 class ColorPickCommand(sublime_plugin.TextCommand):
     def run(self, edit):
-        sel = self.view.sel()
-        selected = None
-        # get the currently selected color - if any
-        if len(sel) > 0:
-            selected = self.view.substr(self.view.word(sel[0])).strip()
-            if selected.startswith('#'):
-                selected = selected[1:]
-            elif selected.startswith('0x'):
-                selected = selected[2:]
-
+        # Remember all regions to replace later. Restrict each selected region to a color, if there's one there. We
+        # use `view.word()` to get the closest color. `0x` is considered as being a part of a word. `#` is not.
+        #
+        # Checking if the character at `word.a - 1` is `#` is ok, as this will never go to the previous line. Indeed,
+        # if it goes to the previous line, then the character must be `\n`.
         regions = []
-        # remember all regions to replace later
-        for region in sel:
+        for region in self.view.sel():
             word = self.view.word(region)
-            # if the selected word is a valid color, remember it
-            if is_valid_hex_color(self.view.substr(word)):
-                # include '#' if present
+            if re.fullmatch(r'[\da-f]{3}|[\da-f]{6}', self.view.substr(word), re.IGNORECASE):
                 if self.view.substr(word.a - 1) == '#':
-                    word = sublime.Region(word.a - 1, word.b)
-                # A '0x' prefix is considered part of the word and is included anyway
-
-                # remember
-                regions.append(word)
-            # otherwise just remember the selected region
-            else:
-                regions.append(region)
+                    region = sublime.Region(word.a - 1, word.b)
+                else:
+                    region = word
+            elif re.fullmatch(r'0x([\da-f]{3}|[\da-f]{6})', self.view.substr(word), re.IGNORECASE):
+                region = word
+            regions.append(region)
 
         self.view.erase_regions('ColorPick')
         self.view.add_regions('ColorPick', regions)
 
         def worker():
-            color = pick_color(selected)
+            color = pick_color(self.view.substr(regions[0]))
             if color:
                 # Determine user preference for case of letters (default upper)
                 s = sublime.load_settings('ColorPicker.sublime-settings')
