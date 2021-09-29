@@ -1,4 +1,5 @@
 import re
+import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -166,7 +167,7 @@ def pick_color(start_color=None):
         if matches:
             start_color = f'#{matches.group(1)}'
 
-    args = [Path(sublime.packages_path()) / 'ColorPicker/bin/colorpicker.py']
+    args = [shutil.which('python'), Path(sublime.packages_path()) / 'ColorPicker/bin/colorpicker.py']
     if start_color:
         args.append(start_color)
     return subprocess.check_output(args).decode('utf-8').strip()
