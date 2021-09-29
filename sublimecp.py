@@ -5,11 +5,6 @@ import threading
 import sublime
 import sublime_plugin
 
-sublime_version = 2
-
-if not sublime.version() or int(sublime.version()) > 3000:
-    sublime_version = 3
-
 if sublime.platform() == 'windows':
 
     import ctypes
@@ -107,13 +102,10 @@ if sublime.platform() == 'windows':
         ctypes.memset(ctypes.byref(cc), 0, ctypes.sizeof(cc))
         cc.lStructSize = ctypes.sizeof(cc)
 
-        if sublime_version == 2:
-            cc.hwndOwner = window.hwnd()
-        else:
-            # Temporary fix for Sublime Text 3 - For some reason the hwnd crashes it
-            # Of course, clicking out of the colour picker and into Sublime will make
-            # Sublime not respond, but as soon as you exit the colour picker it's ok
-            cc.hwndOwner = None
+        # Temporary fix for Sublime Text 3 - For some reason the hwnd crashes it
+        # Of course, clicking out of the colour picker and into Sublime will make
+        # Sublime not respond, but as soon as you exit the colour picker it's ok
+        cc.hwndOwner = None
 
         cc.Flags = CC_SOLIDCOLOR | CC_FULLOPEN | CC_RGBINIT
         cc.rgbResult = c_uint32(start_color) if not paste and start_color else get_pixel()
@@ -127,7 +119,7 @@ if sublime.platform() == 'windows':
         return color
 
 
-class ColorPicker(object):
+class ColorPicker:
     # SVG Colors spec: http://www.w3.org/TR/css3-color/#svg-color
     SVGColors = {
         "aliceblue": "F0F8FF",
@@ -320,8 +312,7 @@ class ColorPicker(object):
         if color:
             if (
                 sublime.platform() != 'windows' or
-                win_use_new_picker or
-                sublime_version == 2
+                win_use_new_picker
             ):
                 color = color.decode('utf-8')
 
@@ -451,14 +442,3 @@ elif sublime.platform() == 'linux':
     binpath = os.path.join(libdir, 'linux_colorpicker.py')
 else:
     binpath = os.path.join(libdir, 'win_colorpicker.exe')
-
-
-def plugin_loaded():
-    if sublime.platform() == 'osx' or sublime.platform() == 'linux':
-        binfile = os.path.join(sublime.packages_path(), binpath)
-        if not os.access(binfile, os.X_OK):
-            os.chmod(binfile, 0o755)
-
-
-if sublime_version == 2:
-    plugin_loaded()
