@@ -1,7 +1,7 @@
-import os
 import re
 import subprocess
 import threading
+from pathlib import Path
 
 import sublime
 import sublime_plugin
@@ -166,17 +166,10 @@ def pick_color(start_color=None):
         if matches:
             start_color = f'#{matches.group(1)}'
 
-    args = [os.path.join(sublime.packages_path(), binpath)]
+    args = [Path(sublime.packages_path()) / 'ColorPicker/bin/colorpicker.py']
     if start_color:
         args.append(start_color)
-
-    proc = subprocess.Popen(args, stdout=subprocess.PIPE)
-    color = proc.communicate()[0].strip()
-
-    if color:
-        color = color.decode('utf-8')
-
-    return color
+    return subprocess.check_output(args).decode('utf-8').strip()
 
 
 class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
@@ -225,7 +218,3 @@ class ColorPickCommand(sublime_plugin.TextCommand):
                 self.view.run_command('color_pick_replace_regions_helper', {'color': f'#{color}'})
 
         threading.Thread(target=worker).start()
-
-
-libdir = os.path.join('ColorPicker', 'lib')
-binpath = os.path.join(libdir, 'colorpicker.py')
