@@ -1,11 +1,20 @@
+import enum
 import re
 import shutil
 import subprocess
 import threading
+from enum import Enum
 from pathlib import Path
 
 import sublime
 import sublime_plugin
+
+
+class ColorType(Enum):
+    PLAIN_HEX = enum.auto()
+    ZERO_X_HEX = enum.auto()
+    HASH_HEX = enum.auto()
+
 
 # SVG Colors spec: http://www.w3.org/TR/css3-color/#svg-color
 SVG_COLORS = {
@@ -160,13 +169,6 @@ SVG_COLORS = {
 
 
 def pick_color(start_color=None):
-    if start_color in SVG_COLORS:
-        start_color = f'#{SVG_COLORS[start_color]}'
-    else:
-        matches = re.fullmatch(r'(?:0x|#)?([\da-f]{3}|[\da-f]{6})', start_color, re.IGNORECASE)
-        if matches:
-            start_color = f'#{matches.group(1)}'
-
     args = [shutil.which('python'), Path(sublime.packages_path()) / 'ColorPicker/bin/colorpicker.py']
     if start_color:
         args.append(start_color)
@@ -178,9 +180,15 @@ class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
     Helper command. Created since we can't use `edit` objects in separate threads.
     '''
     # noinspection PyMethodOverriding
-    def run(self, edit, color):
-        for region in self.view.get_regions('ColorPick'):
-            self.view.replace(edit, region, color)
+    def run(self, edit, color, color_types):
+        for (region, color_type) in zip(self.view.get_regions('ColorPick'), color_types):
+            color_type = ColorType(color_type)
+            if color_type == ColorType.PLAIN_HEX:
+                self.view.replace(edit, region, color)
+            elif color_type == ColorType.ZERO_X_HEX:
+                self.view.replace(edit, region, f'0x{color}')
+            elif color_type == ColorType.HASH_HEX:
+                self.view.replace(edit, region, f'#{color}')
         self.view.erase_regions('ColorPick')
 
 
@@ -192,31 +200,48 @@ class ColorPickCommand(sublime_plugin.TextCommand):
         # Checking if the character at `word.a - 1` is `#` is ok, as this will never go to the previous line. Indeed,
         # if it goes to the previous line, then the character must be `\n`.
         regions = []
+        colors = []
+        color_types = []
         for region in self.view.sel():
-            word = self.view.word(region)
-            if re.fullmatch(r'[\da-f]{3}|[\da-f]{6}', self.view.substr(word), re.IGNORECASE):
-                if self.view.substr(word.a - 1) == '#':
-                    region = sublime.Region(word.a - 1, word.b)
+            word_region = self.view.word(region)
+            word_str = self.view.substr(word_region)
+            if re.fullmatch(r'[\da-f]{3}|[\da-f]{6}', word_str, re.IGNORECASE):
+                if self.view.substr(word_region.begin() - 1) == '#':
+                    regions.append(sublime.Region(word_region.begin() - 1, word_region.end()))
+                    colors.append(f'#{word_str}')
+                    color_types.append(ColorType.HASH_HEX)
                 else:
-                    region = word
-            elif re.fullmatch(r'0x([\da-f]{3}|[\da-f]{6})', self.view.substr(word), re.IGNORECASE):
-                region = word
-            regions.append(region)
+                    regions.append(word_region)
+                    colors.append(word_str)
+                    color_types.append(ColorType.PLAIN_HEX)
+            elif re.fullmatch(r'0x([\da-f]{3}|[\da-f]{6})', word_str, re.IGNORECASE):
+                regions.append(word_region)
+                colors.append(word_str)
+                color_types.append(ColorType.ZERO_X_HEX)
+            elif word_str in SVG_COLORS:
+                regions.append(word_region)
+                colors.append(SVG_COLORS[word_str])
+                color_types.append(ColorType.HASH_HEX)
 
         self.view.erase_regions('ColorPick')
         self.view.add_regions('ColorPick', regions)
 
         def worker():
-            color = pick_color(self.view.substr(regions[0]))
-            if color:
+            new_color = pick_color(colors[0])
+            if new_color:
                 # Determine user preference for case of letters (default upper)
                 s = sublime.load_settings('ColorPicker.sublime-settings')
                 upper_case = s.get('color_upper_case', True)
                 if upper_case:
-                    color = color.upper()
+                    new_color = new_color.upper()
                 else:
-                    color = color.lower()
-                self.view.run_command('color_pick_replace_regions_helper', {'color': f'#{color}'})
+                    new_color = new_color.lower()
+                self.view.run_command(
+                    'color_pick_replace_regions_helper', {
+                        'color': new_color,
+                        'color_types': [color_type.value for color_type in color_types],
+                    }
+                )
 
         # Run the color picker in a thread, so we don't block
         threading.Thread(target=worker).start()
