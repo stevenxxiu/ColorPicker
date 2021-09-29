@@ -5,119 +5,6 @@ import threading
 import sublime
 import sublime_plugin
 
-if sublime.platform() == 'windows':
-
-    import ctypes
-    from ctypes import POINTER, c_int32, c_uint32, c_void_p, c_wchar_p
-
-    class CHOOSECOLOR(ctypes.Structure):
-        _fields_ = [('lStructSize', c_uint32),
-                    ('hwndOwner', c_void_p),
-                    ('hInstance', c_void_p),
-                    ('rgbResult', c_uint32),
-                    ('lpCustColors', POINTER(c_uint32)),
-                    ('Flags', c_uint32),
-                    ('lCustData', c_void_p),
-                    ('lpfnHook', c_void_p),
-                    ('lpTemplateName', c_wchar_p)]
-
-    class POINT(ctypes.Structure):
-        _fields_ = [('x', c_int32),
-                    ('y', c_int32)]
-
-    CustomColorArray = c_uint32 * 16
-    CC_SOLIDCOLOR = 0x80
-    CC_RGBINIT = 0x01
-    CC_FULLOPEN = 0x02
-
-    ChooseColorW = ctypes.windll.Comdlg32.ChooseColorW
-    ChooseColorW.argtypes = [POINTER(CHOOSECOLOR)]
-    ChooseColorW.restype = c_int32
-
-    GetDC = ctypes.windll.User32.GetDC
-    GetDC.argtypes = [c_void_p]
-    GetDC.restype = c_void_p
-
-    ReleaseDC = ctypes.windll.User32.ReleaseDC
-    ReleaseDC.argtypes = [c_void_p, c_void_p]  # hwnd, hdc
-    ReleaseDC.restype = c_int32
-
-    GetCursorPos = ctypes.windll.User32.GetCursorPos
-    GetCursorPos.argtypes = [POINTER(POINT)]  # POINT
-    GetCursorPos.restype = c_int32
-
-    GetPixel = ctypes.windll.Gdi32.GetPixel
-    GetPixel.argtypes = [c_void_p, c_int32, c_int32]  # hdc, x, y
-    GetPixel.restype = c_uint32  # colorref
-
-    def get_pixel():
-        hdc = GetDC(0)
-        pos = POINT()
-        GetCursorPos(ctypes.byref(pos))
-        val = GetPixel(hdc, pos.x, pos.y)
-        ReleaseDC(0, hdc)
-        return val
-
-    def to_custom_color_array(custom_colors):
-        cc = CustomColorArray()
-        for i in range(16):
-            cc[i] = int(custom_colors[i])
-        return cc
-
-    def from_custom_color_array(custom_colors):
-        cc = [0] * 16
-        for i in range(16):
-            cc[i] = str(custom_colors[i])
-        return cc
-
-    def bgr_to_hexstr(bgr, byte_table=list(['{0:02X}'.format(b) for b in range(256)])):
-        # 0x00BBGGRR
-        b = byte_table[(bgr >> 16) & 0xff]
-        g = byte_table[(bgr >> 8) & 0xff]
-        r = byte_table[(bgr) & 0xff]
-        return (r + g + b)
-
-    def hexstr_to_bgr(hexstr):
-        if len(hexstr) == 3:
-            hexstr = hexstr[0] + hexstr[0] + hexstr[1] + hexstr[1] + hexstr[2] + hexstr[2]
-
-        r = int(hexstr[0:2], 16)
-        g = int(hexstr[2:4], 16)
-        b = int(hexstr[4:6], 16)
-        return (b << 16) | (g << 8) | r
-
-    def win_pick(window, starting_color):
-        paste = None
-        start_color = None
-        if starting_color is not None:
-            start_color = hexstr_to_bgr(starting_color[1:])
-        s = sublime.load_settings("ColorPicker.sublime-settings")
-        custom_colors = s.get("custom_colors", ['0'] * 16)
-
-        if len(custom_colors) < 16:
-            custom_colors = ['0'] * 16
-            s.set('custom_colors', custom_colors)
-
-        cc = CHOOSECOLOR()
-        ctypes.memset(ctypes.byref(cc), 0, ctypes.sizeof(cc))
-        cc.lStructSize = ctypes.sizeof(cc)
-
-        # Temporary fix for Sublime Text 3 - For some reason the hwnd crashes it
-        # Of course, clicking out of the colour picker and into Sublime will make
-        # Sublime not respond, but as soon as you exit the colour picker it's ok
-        cc.hwndOwner = None
-
-        cc.Flags = CC_SOLIDCOLOR | CC_FULLOPEN | CC_RGBINIT
-        cc.rgbResult = c_uint32(start_color) if not paste and start_color else get_pixel()
-        cc.lpCustColors = to_custom_color_array(custom_colors)
-
-        if ChooseColorW(ctypes.byref(cc)):
-            color = bgr_to_hexstr(cc.rgbResult)
-        else:
-            color = None
-
-        return color
-
 
 class ColorPicker:
     # SVG Colors spec: http://www.w3.org/TR/css3-color/#svg-color
@@ -273,8 +160,6 @@ class ColorPicker:
 
     def pick(self, window, starting_color=None):
         start_color = None
-        start_color_osx = None
-        win_use_new_picker = False
 
         if starting_color is not None:
             svg_color_hex = self.SVGColors.get(starting_color, None)
@@ -283,38 +168,16 @@ class ColorPicker:
 
             if self.is_valid_hex_color(starting_color):
                 start_color = "#" + starting_color
-                start_color_osx = starting_color
 
-        if sublime.platform() == 'windows':
-            s = sublime.load_settings("ColorPicker.sublime-settings")
-            win_use_new_picker = s.get('win_use_new_picker', True)
-            if win_use_new_picker:
-                args = [os.path.join(sublime.packages_path(), binpath)]
-                if start_color:
-                    args.append(start_color)
-            else:
-                color = win_pick(window, start_color)
+        args = [os.path.join(sublime.packages_path(), binpath)]
+        if start_color:
+            args.append(start_color)
 
-        elif sublime.platform() == 'osx':
-            args = [os.path.join(sublime.packages_path(), binpath)]
-            if start_color_osx:
-                args.append('-startColor')
-                args.append(start_color_osx)
-        else:
-            args = [os.path.join(sublime.packages_path(), binpath)]
-            if start_color:
-                args.append(start_color)
-
-        if sublime.platform() != "windows" or win_use_new_picker:
-            proc = subprocess.Popen(args, stdout=subprocess.PIPE)
-            color = proc.communicate()[0].strip()
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE)
+        color = proc.communicate()[0].strip()
 
         if color:
-            if (
-                sublime.platform() != 'windows' or
-                win_use_new_picker
-            ):
-                color = color.decode('utf-8')
+            color = color.decode('utf-8')
 
         return color
 
@@ -436,9 +299,4 @@ class ColorPickCommand(sublime_plugin.TextCommand):
 
 
 libdir = os.path.join('ColorPicker', 'lib')
-if sublime.platform() == 'osx':
-    binpath = os.path.join(libdir, 'osx_colorpicker')
-elif sublime.platform() == 'linux':
-    binpath = os.path.join(libdir, 'linux_colorpicker.py')
-else:
-    binpath = os.path.join(libdir, 'win_colorpicker.exe')
+binpath = os.path.join(libdir, 'colorpicker.py')
