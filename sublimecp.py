@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import threading
 
@@ -158,15 +159,9 @@ SVG_COLORS = {
 
 
 def is_valid_hex_color(s):
-    if s.startswith('0x'):
-        s = s[2:]
-
-    if len(s) not in (3, 6):
-        return False
-    try:
-        return 0 <= int(s, 16) <= 0xffffff
-    except ValueError:
-        return False
+    matches = re.fullmatch(r'(0x)?([\da-f]{3}|[\da-f]{6})', s, re.IGNORECASE)
+    if matches:
+        return matches.group(1)
 
 
 def pick_color(starting_color=None):
