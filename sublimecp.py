@@ -1,9 +1,9 @@
+import os
+import subprocess
+import threading
+
 import sublime
 import sublime_plugin
-import subprocess
-import os
-import threading
-from stat import *
 
 sublime_version = 2
 
@@ -13,7 +13,7 @@ if not sublime.version() or int(sublime.version()) > 3000:
 if sublime.platform() == 'windows':
 
     import ctypes
-    from ctypes import c_int32, c_uint32, c_void_p, c_wchar_p, POINTER
+    from ctypes import POINTER, c_int32, c_uint32, c_void_p, c_wchar_p
 
     class CHOOSECOLOR(ctypes.Structure):
         _fields_ = [('lStructSize', c_uint32),
