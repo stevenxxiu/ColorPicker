@@ -175,59 +175,86 @@ def pick_color(start_color=None):
     return subprocess.check_output(args).decode('utf-8').strip()
 
 
+def extract_color_texts(s):
+    return re.finditer(
+        r'\b[\da-fA-F]{6}|[\da-fA-F]{3}(\b|$)|' +
+        r'\b0x[\da-fA-F]{6}|[\da-fA-F]{3}(\b|$)|' +
+        r'#[\da-fA-F]{6}|[\da-fA-F]{3}(\b|$)|' +
+        r'\b[a-z]+(\b|$)',
+        s
+    )
+
+
+def find_color_text_type(color_text):
+    if re.fullmatch(r'[\da-fA-F]{3}|[\da-fA-F]{6}', color_text):
+        return ColorType.PLAIN_HEX, f'#{color_text}'
+    elif color_text.startswith('0x'):
+        return ColorType.ZERO_X_HEX, f'#{color_text[2:]}'
+    elif color_text.startswith('#'):
+        return ColorType.HASH_HEX, color_text
+    elif color_text.lower() in SVG_COLORS:
+        return ColorType.HASH_HEX, f'#{SVG_COLORS[color_text]}'
+
+
+def do_regions_overlap(start_1, end_1, start_2, end_2):
+    return start_1 <= start_2 <= end_1 or start_2 <= start_1 <= end_2
+
+
 class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
     '''
     Helper command. Created since we can't use `edit` objects in separate threads.
     '''
     # noinspection PyMethodOverriding
-    def run(self, edit, color, color_types):
-        for (region, color_type) in zip(self.view.get_regions('ColorPick'), color_types):
+    def run(self, edit, color_text, color_text_types):
+        for (region, color_type) in zip(self.view.get_regions('ColorPick'), color_text_types):
             color_type = ColorType(color_type)
             if color_type == ColorType.PLAIN_HEX:
-                self.view.replace(edit, region, color)
+                self.view.replace(edit, region, color_text)
             elif color_type == ColorType.ZERO_X_HEX:
-                self.view.replace(edit, region, f'0x{color}')
+                self.view.replace(edit, region, f'0x{color_text}')
             elif color_type == ColorType.HASH_HEX:
-                self.view.replace(edit, region, f'#{color}')
+                self.view.replace(edit, region, f'#{color_text}')
         self.view.erase_regions('ColorPick')
 
 
 class ColorPickCommand(sublime_plugin.TextCommand):
-    def run(self, edit):
-        # Remember all regions to replace later. Restrict each selected region to a color, if there's one there. We
-        # use `view.word()` to get the closest color. `0x` is considered as being a part of a word. `#` is not.
-        #
-        # Checking if the character at `word.a - 1` is `#` is ok, as this will never go to the previous line. Indeed,
-        # if it goes to the previous line, then the character must be `\n`.
-        regions = []
-        colors = []
-        color_types = []
+    def extract_colors(self):
+        # Remember all regions to replace later. Restrict each selected region to a color, if there's one there. To
+        # do this, for each selected region, we find all colors on that line.
+        color_regions = []
+        color_texts = []
+        color_text_types = []
+        line_to_color_text_matches = {}
         for region in self.view.sel():
-            word_region = self.view.word(region)
-            word_str = self.view.substr(word_region)
-            if re.fullmatch(r'[\da-f]{3}|[\da-f]{6}', word_str, re.IGNORECASE):
-                if self.view.substr(word_region.begin() - 1) == '#':
-                    regions.append(sublime.Region(word_region.begin() - 1, word_region.end()))
-                    colors.append(f'#{word_str}')
-                    color_types.append(ColorType.HASH_HEX)
-                else:
-                    regions.append(word_region)
-                    colors.append(word_str)
-                    color_types.append(ColorType.PLAIN_HEX)
-            elif re.fullmatch(r'0x([\da-f]{3}|[\da-f]{6})', word_str, re.IGNORECASE):
-                regions.append(word_region)
-                colors.append(word_str)
-                color_types.append(ColorType.ZERO_X_HEX)
-            elif word_str in SVG_COLORS:
-                regions.append(word_region)
-                colors.append(SVG_COLORS[word_str])
-                color_types.append(ColorType.HASH_HEX)
+            for line in self.view.lines(region):
+                if line.to_tuple() not in line_to_color_text_matches:
+                    line_to_color_text_matches[line.to_tuple()] = list(extract_color_texts(self.view.substr(line)))
+                for color_text_match in line_to_color_text_matches[line.to_tuple()]:
+                    if not do_regions_overlap(
+                        region.begin(), region.end(),
+                        line.begin() + color_text_match.start(), line.begin() + color_text_match.end()
+                    ):
+                        continue
+                    color_text_type_res = find_color_text_type(color_text_match.group(0))
+                    if not color_text_type_res:
+                        continue
+                    color_regions.append(
+                        sublime.Region(line.begin() + color_text_match.start(), line.begin() + color_text_match.end())
+                    )
+                    color_text_type, color_text = color_text_type_res
+                    color_text_types.append(color_text_type)
+                    color_texts.append(color_text)
+        return color_regions, color_texts, color_text_types
 
+    def run(self, edit):
+        (color_regions, color_texts, color_text_types) = self.extract_colors()
+        if not color_regions:
+            return
         self.view.erase_regions('ColorPick')
-        self.view.add_regions('ColorPick', regions)
+        self.view.add_regions('ColorPick', color_regions)
 
         def worker():
-            new_color = pick_color(colors[0])
+            new_color = pick_color(color_texts[0])
             if new_color:
                 # Determine user preference for case of letters (default upper)
                 s = sublime.load_settings('ColorPicker.sublime-settings')
@@ -238,8 +265,8 @@ class ColorPickCommand(sublime_plugin.TextCommand):
                     new_color = new_color.lower()
                 self.view.run_command(
                     'color_pick_replace_regions_helper', {
-                        'color': new_color,
-                        'color_types': [color_type.value for color_type in color_types],
+                        'color_text': new_color,
+                        'color_text_types': [color_text_type.value for color_text_type in color_text_types],
                     }
                 )
 
