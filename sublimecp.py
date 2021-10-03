@@ -275,7 +275,10 @@ class ColorPickCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         (color_regions, color_texts, color_text_types) = self.extract_colors()
         if not color_regions:
-            return
+            # No colors are selected. Pick a new color for each selected region.
+            color_regions = self.view.sel()
+            color_texts = [''] * len(color_regions)
+            color_text_types = [ColorType.HEX_HASH] * len(color_regions)
         self.view.erase_regions('ColorPick')
         self.view.add_regions('ColorPick', color_regions)
 
