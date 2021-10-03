@@ -15,6 +15,7 @@ class ColorType(Enum):
     HEX_ZERO_X = enum.auto()
     HEX_HASH = enum.auto()
     RGB = enum.auto()
+    RGBA = enum.auto()
 
 
 # SVG Colors spec: http://www.w3.org/TR/css3-color/#svg-color
@@ -197,6 +198,8 @@ def find_color_text_type(color_text):
         return ColorType.HEX_HASH, color_text
     elif color_text.startswith('rgb'):
         return ColorType.RGB, color_text
+    elif color_text.startswith('rgba'):
+        return ColorType.RGBA, color_text
     elif color_text.lower() in SVG_COLORS:
         return ColorType.HEX_HASH, f'#{SVG_COLORS[color_text]}'
 
@@ -211,18 +214,31 @@ class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
     '''
     # noinspection PyMethodOverriding
     def run(self, edit, color_text, color_text_types):
+        r, g, b, a = color_text.split(' ', 4)
+        r, g, b, a = round(float(r) * 255), round(float(g) * 255), round(float(b) * 255), float(a)
+
+        # Determine user preference for case of letters (default to upper-case)
+        settings = sublime.load_settings('ColorPicker.sublime-settings')
+        upper_case = settings.get('color_upper_case', True)
+        cf = '02X' if upper_case else '02x'  # Color format
+
         for (region, color_type) in zip(self.view.get_regions('ColorPick'), color_text_types):
+            # If alpha isn't 1.0, then the only possible format we can use is `rgba()`
+            if a != 1.0:
+                self.view.replace(edit, region, f'rgba({r}, {g}, {b}, {a:.2f})')
+                continue
+            # Match the color format we previously had
             color_type = ColorType(color_type)
             if color_type == ColorType.HEX_PLAIN:
-                self.view.replace(edit, region, color_text)
+                self.view.replace(edit, region, f'{r:{cf}}{g:{cf}}{b:{cf}}')
             elif color_type == ColorType.HEX_ZERO_X:
-                self.view.replace(edit, region, f'0x{color_text}')
+                self.view.replace(edit, region, f'0x{r:{cf}}{g:{cf}}{b:{cf}}')
             elif color_type == ColorType.HEX_HASH:
-                self.view.replace(edit, region, f'#{color_text}')
+                self.view.replace(edit, region, f'#{r:{cf}}{g:{cf}}{b:{cf}}')
             elif color_type == ColorType.RGB:
-                matches = re.fullmatch(r'([\da-fA-F]{2})([\da-fA-F]{2})([\da-fA-F]{2})', color_text)
-                r, g, b = matches.groups()
-                self.view.replace(edit, region, f'rgb({int(r, 16)}, {int(g, 16)}, {int(b, 16)})')
+                self.view.replace(edit, region, f'rgb({r}, {g}, {b})')
+            elif color_type == ColorType.RGBA:
+                self.view.replace(edit, region, f'rgba({r}, {g}, {b}, {a:.2f})')
         self.view.erase_regions('ColorPick')
 
 
@@ -265,13 +281,6 @@ class ColorPickCommand(sublime_plugin.TextCommand):
         def worker():
             new_color = pick_color(color_texts[0])
             if new_color:
-                # Determine user preference for case of letters (default upper)
-                s = sublime.load_settings('ColorPicker.sublime-settings')
-                upper_case = s.get('color_upper_case', True)
-                if upper_case:
-                    new_color = new_color.upper()
-                else:
-                    new_color = new_color.lower()
                 self.view.run_command(
                     'color_pick_replace_regions_helper', {
                         'color_text': new_color,

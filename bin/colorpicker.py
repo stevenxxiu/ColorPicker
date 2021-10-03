@@ -14,9 +14,8 @@ class ColorPicker:
 
     def on_response(self, dialog, response):
         if response == Gtk.ResponseType.OK:
-            # Convert to 8-bit channels
             rgba = dialog.get_rgba()
-            print(f'{round(rgba.red * 255):02X}{round(rgba.green * 255):02X}{round(rgba.blue * 255):02X}')
+            print(f'{rgba.red} {rgba.green} {rgba.blue} {rgba.alpha}')
         self.app.quit()
 
     def on_activate(self, app):
