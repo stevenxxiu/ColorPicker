@@ -184,7 +184,7 @@ def extract_color_texts(s):
         r'#[\da-fA-F]{6}|[\da-fA-F]{3}(\b|$)|' +
         r'\brgb\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|' +
         r'\brgba\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*(1(\.0?)?|0(\.\d*)?)\s*\)|' +
-        r'\b[a-z]+(\b|$)',
+        r'\b[a-zA-Z]+(\b|$)',
         s
     )
 
@@ -201,7 +201,7 @@ def find_color_text_type(color_text):
     elif color_text.startswith('rgba'):
         return ColorType.RGBA, color_text
     elif color_text.lower() in SVG_COLORS:
-        return ColorType.HEX_HASH, f'#{SVG_COLORS[color_text]}'
+        return ColorType.HEX_HASH, f'#{SVG_COLORS[color_text.lower()]}'
 
 
 def do_regions_overlap(start_1, end_1, start_2, end_2):
