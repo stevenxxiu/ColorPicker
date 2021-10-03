@@ -222,7 +222,8 @@ class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
         upper_case = settings.get('color_upper_case', True)
         cf = '02X' if upper_case else '02x'  # Color format
 
-        for (region, color_type) in zip(self.view.get_regions('ColorPick'), color_text_types):
+        # Replace the text in reverse order. Otherwise if we have an alpha, the text will jumbled.
+        for (region, color_type) in zip(self.view.get_regions('ColorPick')[::-1], color_text_types[::-1]):
             # If alpha isn't 1.0, then the only possible format we can use is `rgba()`
             if a != 1.0:
                 self.view.replace(edit, region, f'rgba({r}, {g}, {b}, {a:.2f})')
