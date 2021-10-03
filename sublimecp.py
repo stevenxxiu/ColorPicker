@@ -11,9 +11,10 @@ import sublime_plugin
 
 
 class ColorType(Enum):
-    PLAIN_HEX = enum.auto()
-    ZERO_X_HEX = enum.auto()
-    HASH_HEX = enum.auto()
+    HEX_PLAIN = enum.auto()
+    HEX_ZERO_X = enum.auto()
+    HEX_HASH = enum.auto()
+    RGB = enum.auto()
 
 
 # SVG Colors spec: http://www.w3.org/TR/css3-color/#svg-color
@@ -180,6 +181,8 @@ def extract_color_texts(s):
         r'\b[\da-fA-F]{6}|[\da-fA-F]{3}(\b|$)|' +
         r'\b0x[\da-fA-F]{6}|[\da-fA-F]{3}(\b|$)|' +
         r'#[\da-fA-F]{6}|[\da-fA-F]{3}(\b|$)|' +
+        r'\brgb\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|' +
+        r'\brgba\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*(1(\.0?)?|0(\.\d*)?)\s*\)|' +
         r'\b[a-z]+(\b|$)',
         s
     )
@@ -187,13 +190,15 @@ def extract_color_texts(s):
 
 def find_color_text_type(color_text):
     if re.fullmatch(r'[\da-fA-F]{3}|[\da-fA-F]{6}', color_text):
-        return ColorType.PLAIN_HEX, f'#{color_text}'
+        return ColorType.HEX_PLAIN, f'#{color_text}'
     elif color_text.startswith('0x'):
-        return ColorType.ZERO_X_HEX, f'#{color_text[2:]}'
+        return ColorType.HEX_ZERO_X, f'#{color_text[2:]}'
     elif color_text.startswith('#'):
-        return ColorType.HASH_HEX, color_text
+        return ColorType.HEX_HASH, color_text
+    elif color_text.startswith('rgb'):
+        return ColorType.RGB, color_text
     elif color_text.lower() in SVG_COLORS:
-        return ColorType.HASH_HEX, f'#{SVG_COLORS[color_text]}'
+        return ColorType.HEX_HASH, f'#{SVG_COLORS[color_text]}'
 
 
 def do_regions_overlap(start_1, end_1, start_2, end_2):
@@ -208,12 +213,16 @@ class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
     def run(self, edit, color_text, color_text_types):
         for (region, color_type) in zip(self.view.get_regions('ColorPick'), color_text_types):
             color_type = ColorType(color_type)
-            if color_type == ColorType.PLAIN_HEX:
+            if color_type == ColorType.HEX_PLAIN:
                 self.view.replace(edit, region, color_text)
-            elif color_type == ColorType.ZERO_X_HEX:
+            elif color_type == ColorType.HEX_ZERO_X:
                 self.view.replace(edit, region, f'0x{color_text}')
-            elif color_type == ColorType.HASH_HEX:
+            elif color_type == ColorType.HEX_HASH:
                 self.view.replace(edit, region, f'#{color_text}')
+            elif color_type == ColorType.RGB:
+                matches = re.fullmatch(r'([\da-fA-F]{2})([\da-fA-F]{2})([\da-fA-F]{2})', color_text)
+                r, g, b = matches.groups()
+                self.view.replace(edit, region, f'rgb({int(r, 16)}, {int(g, 16)}, {int(b, 16)})')
         self.view.erase_regions('ColorPick')
 
 
