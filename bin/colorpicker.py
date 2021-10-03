@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys
 
-import gi
+import gi  # isort:skip
 gi.require_version('Gdk', '4.0')
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gdk, Gtk
@@ -43,4 +43,5 @@ def main():
     ColorPicker(init_color).run()
 
 
-main()
+if __name__ == '__main__':
+    main()
