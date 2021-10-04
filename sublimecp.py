@@ -245,8 +245,9 @@ class ColorPickReplaceRegionsHelperCommand(sublime_plugin.TextCommand):
 
 class ColorPickCommand(sublime_plugin.TextCommand):
     def extract_colors(self):
-        # Remember all regions to replace later. Restrict each selected region to a color, if there's one there. To
-        # do this, for each selected region, we find all colors on that line.
+        # Find all colors that overlaps a selection. Do this by finding all colors on all selected lines, then
+        # checking to see if a selection overlaps the color text. Remember the color types too, so we can re-use
+        # the same type, once a new color is selected.
         color_regions = []
         color_texts = []
         color_text_types = []
